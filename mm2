@@ -1,0 +1,198 @@
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+local Character, Humanoid, RootPart, Camera
+local active = false
+local flying = false
+local currentTarget = nil
+local connection, lastPosition
+
+local function notify(msg)
+	local notif = Instance.new("Frame")
+	notif.Size = UDim2.new(0, 280, 0, 45)
+	notif.Position = UDim2.new(1, -300, 1, -55)
+	notif.BackgroundColor3 = Color3.fromRGB(25,25,25)
+	notif.BorderSizePixel = 1
+	notif.BorderColor3 = Color3.new(1,1,1)
+	notif.Parent = PlayerGui
+	local txt = Instance.new("TextLabel")
+	txt.Size = UDim2.new(1,0,1,0)
+	txt.BackgroundTransparency = 1
+	txt.Text = msg
+	txt.TextColor3 = Color3.new(1,1,1)
+	txt.Font = Enum.Font.Gotham
+	txt.TextSize = 14
+	txt.Parent = notif
+	task.delay(3, function() notif:Destroy() end)
+end
+
+local function updateChar()
+	Character = Player.Character or Player.CharacterAdded:Wait()
+	Humanoid = Character:WaitForChild("Humanoid")
+	RootPart = Character:WaitForChild("HumanoidRootPart")
+	Camera = workspace.CurrentCamera
+end
+updateChar()
+Player.CharacterAdded:Connect(updateChar)
+
+local function findNextCoin()
+	local container = Workspace:FindFirstChild("CoinContainer")
+	if not container then return nil end
+	local targets = {}
+	for _, model in ipairs(container:GetChildren()) do
+		if model:IsA("Model") and model.Name == "Coin_Server" then
+			local touch = model:FindFirstChild("TouchInterest", true)
+			if touch and touch.Parent then
+				table.insert(targets, touch.Parent)
+			end
+		end
+	end
+	if #targets == 0 then return nil end
+	if currentTarget then
+		for i, v in ipairs(targets) do
+			if v == currentTarget then table.remove(targets, i) break end
+		end
+	end
+	return targets[math.random(1, #targets)]
+end
+
+local function setNoclip(state)
+	if not Character then return end
+	for _, part in ipairs(Character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.CanCollide = not state
+		end
+	end
+end
+
+local function setFly(state)
+	flying = state
+	if not Humanoid or not RootPart then return end
+	Humanoid.PlatformStand = state
+	Humanoid:SetAttribute("Noclip", state)
+	if state then
+		connection = RunService.RenderStepped:Connect(function()
+			if not RootPart or not currentTarget then return end
+			local dir = (currentTarget.Position - RootPart.Position).Unit
+			local dist = (currentTarget.Position - RootPart.Position).Magnitude
+			setNoclip(true)
+			if dist > 6 then
+				RootPart.Velocity = dir * 28
+			else
+				RootPart.Velocity = Vector3.new(0,0,0)
+			end
+		end)
+	else
+		if connection then connection:Disconnect() end
+		setNoclip(false)
+	end
+end
+
+local function loop()
+	while active do
+		task.wait(0.1)
+		local newTarget = findNextCoin()
+		if not newTarget then
+			task.wait(0.8)
+			continue
+		end
+		currentTarget = newTarget
+		setFly(true)
+		repeat task.wait(0.1) until not currentTarget or (currentTarget.Position - RootPart.Position).Magnitude < 7
+		if not currentTarget then setFly(false) continue end
+		setFly(false)
+		lastPosition = currentTarget.Position
+		repeat
+			task.wait(0.15)
+			if not currentTarget or not currentTarget:IsDescendantOf(Workspace) then break end
+			local randomOffset = Vector3.new(math.random(-2,2),0,math.random(-2,2))
+			Humanoid:MoveTo(lastPosition + randomOffset)
+			task.wait(0.35)
+			if not currentTarget or not currentTarget:IsDescendantOf(Workspace) then break end
+			Humanoid:MoveTo(lastPosition)
+			task.wait(0.35)
+		until not currentTarget or not currentTarget:IsDescendantOf(Workspace)
+		currentTarget = nil
+	end
+end
+
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(0, 50, 0, 50)
+btn.Position = UDim2.new(0.02, 0, 0.5, 0)
+btn.BackgroundColor3 = Color3.new(0,0,0)
+btn.Text = "👙"
+btn.TextSize = 28
+btn.BorderSizePixel = 2
+btn.BorderColor3 = Color3.new(1,1,1)
+btn.Parent = PlayerGui
+
+local menu = Instance.new("Frame")
+menu.Size = UDim2.new(0, 200, 0, 70)
+menu.Position = UDim2.new(0.08, 0, 0.5, 0)
+menu.BackgroundColor3 = Color3.new(0,0,0)
+menu.Visible = false
+menu.Parent = PlayerGui
+
+local coinBtn = Instance.new("TextButton")
+coinBtn.Size = UDim2.new(0, 40, 0, 40)
+coinBtn.Position = UDim2.new(0.05, 0, 0.5, -20)
+coinBtn.BackgroundColor3 = Color3.fromRGB(180,0,0)
+coinBtn.BorderSizePixel = 2
+coinBtn.BorderColor3 = Color3.new(1,1,1)
+coinBtn.Text = ""
+coinBtn.Parent = menu
+
+local coinTxt = Instance.new("TextLabel")
+coinTxt.Size = UDim2.new(0, 100, 0, 30)
+coinTxt.Position = UDim2.new(0.35, 0, 0.5, -15)
+coinTxt.BackgroundTransparency = 1
+coinTxt.Text = "Coin"
+coinTxt.TextColor3 = Color3.new(1,1,1)
+coinTxt.Font = Enum.Font.GothamBold
+coinTxt.TextSize = 18
+coinTxt.TextXAlignment = Enum.TextXAlignment.Left
+coinTxt.Parent = menu
+
+local dragStart, startPos
+btn.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragStart = UIS:GetMouseLocation()
+		startPos = btn.Position
+	end
+end)
+UIS.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement and dragStart then
+		local delta = UIS:GetMouseLocation() - dragStart
+		btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		menu.Position = UDim2.new(btn.Position.X.Scale, btn.Position.X.Offset + 60, btn.Position.Y.Scale, btn.Position.Y.Offset)
+	end
+end)
+UIS.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then dragStart = nil end
+end)
+
+btn.MouseButton1Click:Connect(function()
+	menu.Visible = not menu.Visible
+end)
+
+coinBtn.MouseButton1Click:Connect(function()
+	active = not active
+	coinBtn.BackgroundColor3 = active and Color3.fromRGB(0,160,0) or Color3.fromRGB(180,0,0)
+	if active then
+		task.spawn(loop)
+	else
+		currentTarget = nil
+		setFly(false)
+	end
+end)
+
+PlayerGui.ChildRemoved:Connect(function(c)
+	if c == btn or c == menu then active = false end
+end)
+
+notify("Script carregado com sucesso")
+  
